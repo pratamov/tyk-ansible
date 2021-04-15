@@ -1,0 +1,68 @@
+---
+- name: Gather RedHat based systems' specific variables
+  include_vars: "redhat.yml"
+  when:
+    ansible_distribution == "RedHat" or
+    ansible_distribution == "CentOS" or
+    ansible_distribution == "Amazon"
+
+- name: Gather Debian based systems' specific variables
+  include_vars: "debian.yml"
+  when:
+    ansible_distribution == "Debian" or
+    ansible_distribution == "Ubuntu"
+
+- name: Add tyk-pump public key to verify package
+  apt_key:
+    url: https://packagecloud.io/tyk/tyk-pump/gpgkey
+    state: present
+  when:
+    ansible_distribution == "Ubuntu" or
+    ansible_distribution == "Debian"
+
+- name: Install tyk-pump required packages
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items: "{{ required_packages }}"
+
+- name: "Copy {{ package_def_file }}"
+  template:
+    src: "../files/{{ package_def_file }}"
+    dest: "{{ package_def_folder }}/{{ package_def_file }}"
+
+- name: Install tyk-pump
+  package:
+    name: tyk-pump
+    state: present
+    update_cache: yes
+
+- name: Copying tyk-pump config
+  vars:
+    mh: "{{ hostvars['mongodb']['ansible_host'] if mongodb_host == None else mongodb_host }}"
+  template:
+    src: ../files/pump.conf
+    dest: /opt/tyk-pump/pump.conf
+
+- name: Inject Tyk environment varibales into /etc/sysconfig/tyk-pump
+  vars:
+    mh: "{{ hostvars['mongodb']['ansible_host'] if mongodb_host == None else mongodb_host }}"
+    rh: "{{ hostvars['redis']['ansible_host'] if redis_host == None else redis_host }}"
+
+  lineinfile:
+    dest: /etc/sysconfig/tyk-pump
+    create: true
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  with_items:
+
+    - { regexp: "^TYK_PMP_ANALYTICSSTORAGECONFIG_HOST=",          line: "TYK_PMP_ANALYTICSSTORAGECONFIG_HOST={{ rh }}"}
+    - { regexp: "^TYK_PMP_ANALYTICSSTORAGECONFIG_PORT=",          line: "TYK_PMP_ANALYTICSSTORAGECONFIG_PORT={{ redis_port }}"}
+    - { regexp: "^TYK_PMP_ANALYTICSSTORAGECONFIG_ENABLECLUSTER=", line: "TYK_PMP_ANALYTICSSTORAGECONFIG_ENABLECLUSTER={{ redis_enable_cluster }}"}
+    - { regexp: "^TYK_PMP_ANALYTICSSTORAGECONFIG_REDISUSESSL=",   line: "TYK_PMP_ANALYTICSSTORAGECONFIG_REDISUSESSL={{ redis_enable_ssl }}"}
+
+- name: Enable tyk-pump
+  service:
+    name: tyk-pump
+    state: started
+    enabled: yes

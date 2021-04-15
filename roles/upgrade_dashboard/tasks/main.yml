@@ -1,0 +1,14 @@
+---
+- name: Backup configurations
+  copy:
+    src: /opt/tyk-dashboard/tyk_analytics.conf
+    dest: /opt/tyk-dashboard/tyk_analytics.conf.backup_migration
+- name: Update package
+  yum:
+    name: tyk-gateway
+    state: latest
+- name: Start tyk-dashboard
+  service:
+    name: tyk-dashboard
+    state: started
+    enabled: yes

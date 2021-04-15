@@ -1,0 +1,14 @@
+---
+- name: Backup configurations
+  copy:
+    src: /opt/tyk-gateway/tyk.conf
+    dest: /opt/tyk-gateway/tyk.conf.backup_migration
+- name: Update package
+  yum:
+    name: tyk-gateway
+    state: latest
+- name: Start tyk-gateway
+  service:
+    name: tyk-gateway
+    state: started
+    enabled: yes

@@ -1,0 +1,85 @@
+---
+- name: Gather RedHat based systems' specific variables
+  include_vars: "redhat.yml"
+  when:
+    ansible_distribution == "RedHat" or
+    ansible_distribution == "CentOS" or
+    ansible_distribution == "Amazon"
+
+- name: Gather Debian based systems' specific variables
+  include_vars: "debian.yml"
+  when:
+    ansible_distribution == "Debian" or
+    ansible_distribution == "Ubuntu"
+
+- name: Add tyk-gateway public key to verify package
+  apt_key:
+    url: https://packagecloud.io/tyk/tyk-gateway/gpgkey
+    state: present
+  when:
+    ansible_distribution == "Ubuntu" or
+    ansible_distribution == "Debian"
+
+- name: Install tyk-gateway required packages
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items: "{{ required_packages }}"
+
+- name: "Copy {{ package_def_file }}"
+  template:
+    src: "../files/{{ package_def_file }}"
+    dest: "{{ package_def_folder }}/{{ package_def_file }}"
+
+- name: Install tyk-gateway
+  package:
+    name: tyk-gateway
+    state: present
+    update_cache: yes
+
+- name: Copy tyk-gateway config
+  template:
+    src: ../files/tyk.conf
+    dest: /opt/tyk-gateway/tyk.conf
+  when: "'tyk-ce' not in ansible_run_tags"
+
+- name: Copy tyk-gateway CE config
+  template:
+    src: ../files/tyk_ce.conf
+    dest: /opt/tyk-gateway/tyk.conf
+  when: "'tyk-ce' in ansible_run_tags"
+
+- name: Inject Tyk environment varibales into /etc/sysconfig/tyk-gateway
+  vars:
+    rh: "{{ hostvars['redis']['ansible_host'] if redis_host == None else redis_host }}"
+
+  lineinfile:
+    dest: /etc/sysconfig/tyk-gateway
+    create: true
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  with_items:
+    - { regexp: "^TYK_GW_LISTENPORT=",            line: "TYK_GW_LISTENPORT={{ gateway_port }}"}
+    - { regexp: "^TYK_GW_STORAGE_HOST=",          line: "TYK_GW_STORAGE_HOST={{ rh }}"}
+    - { regexp: "^TYK_GW_STORAGE_PORT=",          line: "TYK_GW_STORAGE_PORT={{ redis_port }}"}
+    - { regexp: "^TYK_GW_STORAGE_ENABLECLUSTER=", line: "TYK_GW_STORAGE_ENABLECLUSTER={{ redis_enable_cluster }}"}
+    - { regexp: "^TYK_GW_STORAGE_USESSL=",        line: "TYK_GW_STORAGE_USESSL={{ redis_enable_ssl }}"}
+
+- name: Inject none-CE Tyk environment varibales into /etc/sysconfig/tyk-gateway
+  vars:
+    dh: "{{ hostvars['dashboard']['ansible_host'] if dashboard_host == None else dashboard_host }}"
+  lineinfile:
+    dest: /etc/sysconfig/tyk-gateway
+    create: true
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  with_items:
+    - { regexp: "^TYK_GW_POLICIES_POLICYCONNECTIONSTRING=",   line: "TYK_GW_POLICIES_POLICYCONNECTIONSTRING={{ dashboard_protocol }}://{{ dh }}:{{ dashboard_port }}"}
+    - { regexp: "^TYK_GW_DBAPPCONFOPTIONS_CONNECTIONSTRING=", line: "TYK_GW_DBAPPCONFOPTIONS_CONNECTIONSTRING={{ dashboard_protocol }}://{{ dh }}:{{ dashboard_port }}"}
+  when: "'tyk-ce' not in ansible_run_tags"
+
+- name: Enable tyk-gateway
+  service:
+    name: tyk-gateway
+    state: started
+    enabled: yes

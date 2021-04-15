@@ -1,0 +1,14 @@
+---
+- name: Backup configurations
+  copy:
+    src: /opt/tyk-pump/pump.conf
+    dest: /opt/tyk-pump/pump.conf.backup_migration
+- name: Update package
+  yum:
+    name: tyk-pump
+    state: latest
+- name: Enable tyk-pump
+  service:
+    name: tyk-pump
+    state: started
+    enabled: yes
